@@ -2,14 +2,17 @@ package com.kepeng.youthfest;
 
 import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
-
+import android.annotation.SuppressLint;
+import android.app.Activity;
 import android.content.ActivityNotFoundException;
+import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
-
 import android.view.KeyEvent;
+import android.view.Window;
+import android.view.WindowManager;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
@@ -18,118 +21,145 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
+import com.google.zxing.integration.android.IntentIntegrator;
+import com.google.zxing.integration.android.IntentResult;
 
 public class MainActivity extends AppCompatActivity {
 
-    private WebView webview;
-    String url="https://dyouthfest.kepeng.io/";
-    private static final int FILE_SELECT_CODE = 0;
+    public static final String MAIN_SITE_URL = "https://dyouthfest.kepeng.io/",
+            STRING_TO_MATCH_FOR_BARCODE_SCAN = "https://dyouthfest.kepeng.io/scan",
+            POST_URL = "https://dyouthfest.kepeng.io/Dompet/buy/";
 
+    private WebView main_web_view;
+    private static final int FILE_SELECT_CODE = 0;
     private ValueCallback<Uri> mUploadMessage;
     public ValueCallback<Uri[]> uploadMessage;
     public static final int REQUEST_SELECT_FILE = 100;
     private final static int FILECHOOSER_RESULTCODE = 1;
 
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
+    @SuppressLint("JavascriptInterface")
+    public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-
-
-        Uri uri=getIntent().getData();
-        if (uri!=null){
-            String path=uri.toString();
-            Toast.makeText(MainActivity.this,"Path="+path,Toast.LENGTH_LONG).show();
+        Uri uri = getIntent().getData();
+        if (uri != null) {
+            String path = uri.toString();
+            Toast.makeText(MainActivity.this, "Path=" + path, Toast.LENGTH_LONG).show();
         }
 
+        main_web_view = (WebView) findViewById(R.id.webview);
+        main_web_view.setWebViewClient(new WebViewClient());
 
-        webview=(WebView) findViewById(R.id.webview);
-        webview.setWebViewClient(new WebViewClient());
-        webview.loadUrl("https://dyouthfest.kepeng.io/");
-
-
-        WebSettings mwebSettings=webview.getSettings();
+        WebSettings mwebSettings = main_web_view.getSettings();
         mwebSettings.setJavaScriptEnabled(true);
         mwebSettings.setSupportZoom(false);
         mwebSettings.setAllowFileAccess(true);
         mwebSettings.setAllowFileAccess(true);
         mwebSettings.setAllowContentAccess(true);
 
-        if (18 < Build.VERSION.SDK_INT ){
-            //18 = JellyBean MR2, KITKAT=19
-            webview.getSettings().setCacheMode(WebSettings.LOAD_NO_CACHE);
+        if (18 < Build.VERSION.SDK_INT) { //18=JellyBean MR2, KITKAT=19 webview.getSettings().setCacheMode(WebSettings.LOAD_NO_CACHE); } if (Build.VERSION.SDK_INT>= 19) {
+            main_web_view.getSettings().setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
         }
+        main_web_view.setWebChromeClient(new WebChromeClient() {
+                                             //The undocumented magic method override
+                                             //Eclipse will swear at you if you try to put @Override here
 
-        if (Build.VERSION.SDK_INT >= 19) {
-            webview.getSettings().setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
-        }
+                                             protected void openFileChooser(ValueCallback uploadMsg, String acceptType) {
+                                                 mUploadMessage = uploadMsg;
+                                                 Intent i = new Intent(Intent.ACTION_GET_CONTENT);
+                                                 i.addCategory(Intent.CATEGORY_OPENABLE);
+                                                 i.setType("image/*");
+                                                 startActivityForResult(Intent.createChooser(i, "File Browser"), FILECHOOSER_RESULTCODE);
+                                             }
 
+                                             @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
+                                             public boolean onShowFileChooser(WebView mWebView, ValueCallback<Uri[]> filePathCallback, WebChromeClient.FileChooserParams fileChooserParams) {
+                                                 if (uploadMessage != null) {
+                                                     uploadMessage.onReceiveValue(null);
+                                                     uploadMessage = null;
+                                                 }
 
+                                                 uploadMessage = filePathCallback;
 
+                                                 Intent intent = fileChooserParams.createIntent();
+                                                 try {
+                                                     startActivityForResult(intent, REQUEST_SELECT_FILE);
+                                                 } catch (ActivityNotFoundException e) {
+                                                     uploadMessage = null;
+                                                     Toast.makeText(MainActivity.this.getApplicationContext(), "Cannot Open File Chooser", Toast.LENGTH_LONG).show();
+                                                     return false;
+                                                 }
+                                                 return true;
+                                             }
 
-        webview.setWebChromeClient(new WebChromeClient() {
-            //The undocumented magic method override
-            //Eclipse will swear at you if you try to put @Override here
+                                             //For Android 4.1 only
+                                             protected void openFileChooser(ValueCallback<Uri> uploadMsg, String acceptType, String capture) {
+                                                 mUploadMessage = uploadMsg;
+                                                 Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+                                                 intent.addCategory(Intent.CATEGORY_OPENABLE);
+                                                 intent.setType("image/*");
+                                                 startActivityForResult(Intent.createChooser(intent, "File Browser"), FILECHOOSER_RESULTCODE);
+                                             }
 
+                                             protected void openFileChooser(ValueCallback<Uri> uploadMsg) {
+                                                 mUploadMessage = uploadMsg;
+                                                 Intent i = new Intent(Intent.ACTION_GET_CONTENT);
+                                                 i.addCategory(Intent.CATEGORY_OPENABLE);
+                                                 i.setType("image/*");
+                                                 startActivityForResult(Intent.createChooser(i, "File Chooser"), FILECHOOSER_RESULTCODE);
+                                             }
+                                         }
+        );        // load site URL
+        openUrl(MAIN_SITE_URL);
+    } // onCreate();
 
-            protected void openFileChooser(ValueCallback uploadMsg, String acceptType)
-            {
-                mUploadMessage = uploadMsg;
-                Intent i = new Intent(Intent.ACTION_GET_CONTENT);
-                i.addCategory(Intent.CATEGORY_OPENABLE);
-                i.setType("image/*");
-                startActivityForResult(Intent.createChooser(i, "File Browser"), FILECHOOSER_RESULTCODE);
+    public void openUrl(String url) {
+        main_web_view = (WebView) findViewById(R.id.webview);
+        //enable javascript
+        main_web_view.getSettings().setJavaScriptEnabled(true);
+
+        // get the activity context
+        final Activity activity = this;
+
+        //set client to handle errors and intercept link clicks
+        main_web_view.setWebViewClient(new WebViewClient() {
+
+            @Override
+            public void onReceivedError(WebView view, int errorCode,
+                                        String description, String failingUrl) {
+                String msg = "error : " + description + " Request URL : " + failingUrl;
+                Toast.makeText(activity, msg, Toast.LENGTH_LONG).show();
             }
 
-
-            // For Lollipop 5.0+ Devices
-            @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
-            public boolean onShowFileChooser(WebView mWebView, ValueCallback<Uri[]> filePathCallback, WebChromeClient.FileChooserParams fileChooserParams)
-            {
-                if (uploadMessage != null) {
-                    uploadMessage.onReceiveValue(null);
-                    uploadMessage = null;
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                // we will interrupt the link here
+                // we will interrupt the link here
+                if (isURLMatching(url)) {
+                    scanNow();
+                    return true;
                 }
+                return super.shouldOverrideUrlLoading(view, url);
 
-                uploadMessage = filePathCallback;
-
-                Intent intent = fileChooserParams.createIntent();
-                try
-                {
-                    startActivityForResult(intent, REQUEST_SELECT_FILE);
-                } catch (ActivityNotFoundException e)
-                {
-                    uploadMessage = null;
-                    Toast.makeText(MainActivity.this.getApplicationContext(), "Cannot Open File Chooser", Toast.LENGTH_LONG).show();
-                    return false;
-                }
-                return true;
             }
 
-            //For Android 4.1 only
-            protected void openFileChooser(ValueCallback<Uri> uploadMsg, String acceptType, String capture)
-            {
-                mUploadMessage = uploadMsg;
-                Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
-                intent.addCategory(Intent.CATEGORY_OPENABLE);
-                intent.setType("image/*");
-                startActivityForResult(Intent.createChooser(intent, "File Browser"), FILECHOOSER_RESULTCODE);
-            }
-
-            protected void openFileChooser(ValueCallback<Uri> uploadMsg)
-            {
-                mUploadMessage = uploadMsg;
-                Intent i = new Intent(Intent.ACTION_GET_CONTENT);
-                i.addCategory(Intent.CATEGORY_OPENABLE);
-                i.setType("image/*");
-                startActivityForResult(Intent.createChooser(i, "File Chooser"), FILECHOOSER_RESULTCODE);
-            }
         });
 
+        //load the URL
+        main_web_view.loadUrl(url);
     }
 
+    private boolean isURLMatching(String url) {
+        return url.toLowerCase().contains(STRING_TO_MATCH_FOR_BARCODE_SCAN.toLowerCase());
+    }
 
+    private void scanNow() {
+        IntentIntegrator integrator = new IntentIntegrator(this);
+        integrator.setPrompt("Scan Barcode or QR code");
+        integrator.setOrientationLocked(false);
+        integrator.initiateScan();
+    }
 
     private class MyBrowser extends WebViewClient {
         @Override
@@ -142,25 +172,42 @@ public class MainActivity extends AppCompatActivity {
         public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
             view.loadData("Maaf Internet Anda tidak stabil", "text/html", "utf-8");
             super.onReceivedError(view, request, error);
+
         }
 
     }
 
+
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
 
-        if ((keyCode == KeyEvent.KEYCODE_BACK) && webview.canGoBack()){
-            webview.goBack();
+        if ((keyCode == KeyEvent.KEYCODE_BACK) && main_web_view.canGoBack()) {
+            main_web_view.goBack();
             return true;
         }
 
         return super.onKeyDown(keyCode, event);
     }
 
-    @Override
+    @SuppressLint("MissingSuperCall")
     public void onActivityResult(int requestCode, int resultCode, Intent intent) {
-        super.onActivityResult(requestCode, resultCode, intent);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+
+        IntentResult scanningResult = IntentIntegrator.parseActivityResult(requestCode, resultCode, intent);
+        if (scanningResult != null) {
+            //we have a result
+            String codeContent = scanningResult.getContents();
+            String codeFormat = scanningResult.getFormatName();
+
+            //load the URL and Pass the scanned barcode
+            openUrl(POST_URL+"?id="+codeContent);
+//            Toast toast = Toast.makeText(getApplicationContext(),codeContent, Toast.LENGTH_SHORT);
+//            toast.show();
+
+        }else{
+//            Toast toast = Toast.makeText(getApplicationContext(),"No scan data received!", Toast.LENGTH_SHORT);
+//            toast.show();
+        }
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             if (requestCode == REQUEST_SELECT_FILE) {
                 if (uploadMessage == null)
                     return;
@@ -177,5 +224,8 @@ public class MainActivity extends AppCompatActivity {
             mUploadMessage = null;
         } else
             Toast.makeText(MainActivity.this.getApplicationContext(), "Failed to Upload Image", Toast.LENGTH_LONG).show();
-    }
+     }
+
+        //retrieve scan result
+
 }
